@@ -1,0 +1,13 @@
+# Ignore the huge dataset files
+ipl_master_dataset.csv
+*.csv
+
+# Ignore the AI model file (optional, but good if it gets too large)
+# cricket_dqn_model.zip
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Virtual environment (if you made one)
+venv/

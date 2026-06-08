@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Cricket Tactician</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body class="bg-slate-900 text-white font-sans min-h-screen p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 border-b border-slate-700 pb-4 flex justify-between items-end">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">OptiTeam: 3D Tactical AI</h1>
+                <p class="text-slate-400 mt-2">Deep Reinforcement Learning & Spatial Simulation</p>
+            </div>
+            <div id="connection-status" class="text-sm font-bold text-yellow-500">
+                Awaiting API Connection...
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700 h-fit">
+                <h2 class="text-xl font-semibold mb-4 text-slate-200">Live Match State</h2>
+                
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-1">Overs Bowled (0-20)</label>
+                        <input type="number" id="overs" value="14" step="0.1" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-1">Wickets Lost (0-10)</label>
+                        <input type="number" id="wickets" value="1" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-1">Runs Conceded</label>
+                        <input type="number" id="runs" value="97" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white focus:outline-none focus:border-blue-500">
+                    </div>
+
+                    <button onclick="getStrategy()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition duration-200 shadow-lg shadow-blue-500/30 flex justify-center items-center gap-2">
+                        <span>Deploy AI Strategy</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 rounded-lg shadow-lg border border-slate-700 overflow-hidden relative" style="height: 400px;">
+                    <div id="canvas-container" class="w-full h-full"></div>
+                    <div class="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs font-mono text-slate-300 border border-slate-600">
+                        Top-Down Spatial View
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
+                    <h2 class="text-xl font-semibold mb-4 text-slate-200">AI Recommendation</h2>
+                    
+                    <div id="loading" class="hidden text-slate-400 animate-pulse mt-4">Computing probabilities & rendering spatial vectors...</div>
+                    
+                    <div id="result" class="hidden">
+                        <div class="bg-slate-900 rounded-lg p-6 border-l-4" id="result-border">
+                            <span id="risk-badge" class="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded mb-2 inline-block"></span>
+                            <h3 id="strategy-name" class="text-2xl font-bold text-white mb-3"></h3>
+                            <p id="strategy-desc" class="text-slate-300 leading-relaxed"></p>
+                        </div>
+                    </div>
+
+                    <div id="placeholder" class="text-slate-500 text-center py-8">
+                        Enter the match state and click "Deploy AI" to generate the 3D tactical map.
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. THREE.JS ENGINE SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0f172a); // Tailwind slate-900
+
+        // Camera setup (Top-down angled view)
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(0, 80, 70);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 50, 20);
+        scene.add(dirLight);
+
+        // Create the Stadium Grass (Dark Green Circle)
+        const grassGeo = new THREE.CircleGeometry(45, 64);
+        const grassMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.8 }); // Green
+        const grass = new THREE.Mesh(grassGeo, grassMat);
+        grass.rotation.x = -Math.PI / 2;
+        scene.add(grass);
+
+        // Create the Pitch (Brown Rectangle)
+        const pitchGeo = new THREE.PlaneGeometry(10, 25);
+        const pitchMat = new THREE.MeshStandardMaterial({ color: 0x78350f }); // Brown
+        const pitch = new THREE.Mesh(pitchGeo, pitchMat);
+        pitch.rotation.x = -Math.PI / 2;
+        pitch.position.y = 0.1;
+        scene.add(pitch);
+
+        // Create 11 Fielders
+        const fielders = [];
+        const fielderGeo = new THREE.SphereGeometry(1.2, 16, 16);
+        const fielderMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 }); // Blue players
+        
+        for(let i=0; i<11; i++) {
+            const f = new THREE.Mesh(fielderGeo, fielderMat);
+            f.position.y = 1.2;
+            scene.add(f);
+            fielders.push({
+                mesh: f,
+                target: new THREE.Vector3(0, 1.2, 0) // Where they need to move
+            });
+        }
+
+        // --- 2. TACTICAL PRESETS (X, Z Coordinates) ---
+        // 0 = Bowler, 1 = Keeper, 2-10 = Fielders
+        const presets = {
+            "0": [ // DEFENSIVE (ID: 0) - Spread to the boundaries
+                {x: 0, z: -12}, {x: 0, z: 12}, // Bowler, Keeper
+                {x: -35, z: 20}, {x: 35, z: 20}, {x: -35, z: -20}, {x: 35, z: -20}, // Deep boundaries
+                {x: -15, z: 0}, {x: 15, z: 0}, {x: 0, z: 35}, {x: 0, z: -35}, {x: -25, z: -10}
+            ],
+            "1": [ // STANDARD (ID: 1) - Mid-range ring
+                {x: 0, z: -12}, {x: 0, z: 12},
+                {x: -20, z: 15}, {x: 20, z: 15}, {x: -20, z: -15}, {x: 20, z: -15},
+                {x: -15, z: 0}, {x: 15, z: 0}, {x: -10, z: 25}, {x: 10, z: 25}, {x: 0, z: -25}
+            ],
+            "2": [ // ATTACKING (ID: 2) - Close catching ring
+                {x: 0, z: -12}, {x: 0, z: 12},
+                {x: -5, z: 12}, {x: -8, z: 10}, {x: -10, z: 5}, // Slips and Gully
+                {x: 8, z: 8}, {x: 12, z: 0}, {x: -12, z: -5}, {x: 5, z: -10}, {x: 15, z: -15}, {x: -15, z: 15}
+            ]
+        };
+
+        // Initialize to standard field
+        function setFielders(presetId) {
+            const coords = presets[presetId];
+            for(let i=0; i<11; i++) {
+                fielders[i].target.set(coords[i].x, 1.2, coords[i].z);
+            }
+        }
+        setFielders("1"); // Start in standard
+
+        // --- 3. ANIMATION ENGINE ---
+        function animate() {
+            requestAnimationFrame(animate);
+            // Smoothly move fielders towards their target using Lerp
+            fielders.forEach(f => {
+                f.mesh.position.lerp(f.target, 0.05); 
+            });
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // --- 4. API CONNECTION ---
+        async function getStrategy() {
+            document.getElementById('placeholder').classList.add('hidden');
+            document.getElementById('result').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('connection-status').innerText = "Querying AI...";
+            document.getElementById('connection-status').className = "text-sm font-bold text-blue-400 animate-pulse";
+
+            const payload = {
+                overs_bowled: parseFloat(document.getElementById('overs').value),
+                wickets_lost: parseInt(document.getElementById('wickets').value),
+                runs_conceded: parseInt(document.getElementById('runs').value)
+            };
+
+            try {
+                // Ping the Python Backend
+                const response = await fetch('http://127.0.0.1:8000/predict-strategy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                // --- UPDATE THE 3D FIELD ---
+                setFielders(data.action_id.toString());
+                
+                // Update Text UI
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('result').classList.remove('hidden');
+                document.getElementById('connection-status').innerText = "Live / Secure";
+                document.getElementById('connection-status').className = "text-sm font-bold text-green-500";
+                
+                document.getElementById('strategy-name').innerText = data.recommendation.name;
+                document.getElementById('strategy-desc').innerText = data.recommendation.description;
+                
+                const badge = document.getElementById('risk-badge');
+                const border = document.getElementById('result-border');
+                badge.innerText = data.recommendation.risk_level + " RISK";
+                
+                border.className = "bg-slate-900 rounded-lg p-6 border-l-4 transition-colors duration-500"; 
+                if (data.recommendation.risk_level === "Low") {
+                    badge.className = "text-xs font-bold uppercase px-2 py-1 rounded mb-2 inline-block bg-blue-900 text-blue-300";
+                    border.classList.add("border-blue-500");
+                } else if (data.recommendation.risk_level === "Medium") {
+                    badge.className = "text-xs font-bold uppercase px-2 py-1 rounded mb-2 inline-block bg-yellow-900 text-yellow-300";
+                    border.classList.add("border-yellow-500");
+                } else {
+                    badge.className = "text-xs font-bold uppercase px-2 py-1 rounded mb-2 inline-block bg-red-900 text-red-300";
+                    border.classList.add("border-red-500");
+                }
+
+            } catch (error) {
+                alert("Could not connect to the AI Backend. Ensure your Python terminal is running uvicorn main:app --reload");
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('placeholder').classList.remove('hidden');
+                document.getElementById('connection-status').innerText = "Connection Failed";
+                document.getElementById('connection-status').className = "text-sm font-bold text-red-500";
+            }
+        }
+    </script>
+</body>
+</html>
