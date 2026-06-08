@@ -39,5 +39,5 @@ Ensure you have Python 3.9+ installed.
 
 ### 2. Clone the Repository
 ```bash
-git clone [https://github.com/YourUsername/OptiTeam-Cricket-AI.git](https://github.com/YourUsername/OptiTeam-Cricket-AI.git)
+git clone [https://github.com/lasyavandanapu/OptiTeam-Cricket-AI.git](https://github.com/lasyavandanapu/OptiTeam-Cricket-AI.git)
 cd OptiTeam-Cricket-AI
